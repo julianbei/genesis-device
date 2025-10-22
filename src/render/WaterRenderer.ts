@@ -67,7 +67,7 @@ export function createWaterTexture(scene: Scene, waterFeatures: WaterFeatures, a
   return texture;
 }
 
-export function createWaterPlanes(scene: Scene, waterFeatures: WaterFeatures, options: WaterRenderOptions): Mesh[] {
+export function createWaterPlanes(scene: Scene, waterFeatures: WaterFeatures, options: WaterRenderOptions, terrainMeshes?: Mesh[]): Mesh[] {
   const { waterLevel, tileSize, rows, cols, atlasWidth, atlasHeight } = options;
   const waterMeshes: Mesh[] = [];
   
@@ -76,21 +76,29 @@ export function createWaterPlanes(scene: Scene, waterFeatures: WaterFeatures, op
   
   // Create realistic ocean water material using Babylon.js WaterMaterial
   const oceanWaterMaterial = new WaterMaterial("oceanWater", scene);
-  oceanWaterMaterial.bumpTexture = waterTexture; // Use our water mask as bump
   oceanWaterMaterial.windForce = -15;
-  oceanWaterMaterial.waveHeight = 0.8;
-  oceanWaterMaterial.bumpHeight = 0.1;
+  oceanWaterMaterial.waveHeight = 1.2;
+  oceanWaterMaterial.bumpHeight = 0.3;
   oceanWaterMaterial.windDirection = new Vector2(1, 1);
-  oceanWaterMaterial.waterColor = new Color3(0.1, 0.3, 0.6);
-  oceanWaterMaterial.colorBlendFactor = 0.3;
-  oceanWaterMaterial.waveLength = 0.1;
-  oceanWaterMaterial.waveSpeed = 25.0;
+  oceanWaterMaterial.waterColor = new Color3(0.0, 0.4, 0.8);
+  oceanWaterMaterial.colorBlendFactor = 0.2;
+  oceanWaterMaterial.waveLength = 0.5;
+  oceanWaterMaterial.waveSpeed = 15.0;
   
-  // Create simpler material for rivers (no waves)
+  // Add terrain meshes to water reflection if available
+  if (terrainMeshes) {
+    terrainMeshes.forEach(mesh => {
+      oceanWaterMaterial.addToRenderList(mesh);
+    });
+  }
+  
+  // Create enhanced river material with animated water
   const riverMaterial = new StandardMaterial("riverMaterial", scene);
   riverMaterial.diffuseTexture = waterTexture;
-  riverMaterial.specularColor = new Color3(0.4, 0.6, 0.8);
-  riverMaterial.alpha = 0.8;
+  riverMaterial.emissiveColor = new Color3(0.1, 0.3, 0.6);
+  riverMaterial.specularColor = new Color3(0.8, 0.9, 1.0);
+  riverMaterial.specularPower = 64;
+  riverMaterial.alpha = 0.85;
   riverMaterial.backFaceCulling = false;
   
   // Create water planes for each tile
@@ -112,8 +120,8 @@ export function createWaterPlanes(scene: Scene, waterFeatures: WaterFeatures, op
       const posX = (c - (cols - 1) * 0.5) * tileSize;
       const posZ = (r - (rows - 1) * 0.5) * tileSize;
       
-      oceanPlane.position = new Vector3(posX, waterLevel - 5, posZ); // Slightly below for ocean
-      riverPlane.position = new Vector3(posX, waterLevel + 1, posZ); // Slightly above for rivers
+      oceanPlane.position = new Vector3(posX, waterLevel - 2, posZ); // Ocean below water level
+      riverPlane.position = new Vector3(posX, waterLevel + 0.5, posZ); // Rivers slightly above
       
       oceanPlane.rotation.x = -Math.PI / 2; // Rotate to be horizontal
       riverPlane.rotation.x = -Math.PI / 2;
@@ -134,9 +142,6 @@ export function createWaterPlanes(scene: Scene, waterFeatures: WaterFeatures, op
       oceanPlane.material = oceanWaterMaterial;
       riverPlane.material = riverMaterial;
       
-      // Add terrain meshes as render targets for water reflections
-      oceanWaterMaterial.addToRenderList(oceanPlane); // The water can reflect itself
-      
       waterMeshes.push(oceanPlane, riverPlane);
     }
   }
@@ -149,13 +154,17 @@ export function createRiverHighlights(scene: Scene, waterFeatures: WaterFeatures
   const { riverMask } = waterFeatures;
   const { atlasWidth, atlasHeight, tileSize, rows, cols } = options;
   
-  // Create bright blue material for river highlights
-  const riverMaterial = new StandardMaterial("riverMaterial", scene);
-  riverMaterial.emissiveColor = new Color3(0.3, 0.7, 1.0);
-  riverMaterial.alpha = 0.8;
+  // Create bright flowing river material
+  const riverMaterial = new StandardMaterial("riverHighlightMaterial", scene);
+  riverMaterial.emissiveColor = new Color3(0.2, 0.6, 1.0);
+  riverMaterial.diffuseColor = new Color3(0.3, 0.7, 1.0);
+  riverMaterial.specularColor = new Color3(1.0, 1.0, 1.0);
+  riverMaterial.specularPower = 32;
+  riverMaterial.alpha = 0.9;
+  riverMaterial.backFaceCulling = false;
   
-  // Create small quads at river locations
-  const tilePixelSize = tileSize / (atlasWidth / cols);
+  // Create larger river quads for better visibility
+  const quadSize = tileSize / 20; // Much larger quads
   
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -164,15 +173,15 @@ export function createRiverHighlights(scene: Scene, waterFeatures: WaterFeatures
       const tileEndX = tileStartX + (atlasWidth / cols);
       const tileEndY = tileStartY + (atlasHeight / rows);
       
-      // Sample river mask in this tile
-      for (let y = tileStartY; y < tileEndY; y += 2) { // Sample every 2 pixels
-        for (let x = tileStartX; x < tileEndX; x += 2) {
+      // Sample river mask with bigger steps for larger coverage
+      for (let y = tileStartY; y < tileEndY; y += 3) { // Bigger steps
+        for (let x = tileStartX; x < tileEndX; x += 3) {
           const maskIndex = y * atlasWidth + x;
-          if (maskIndex < riverMask.length && riverMask[maskIndex] > 0.5) {
-            // Create a small river quad
+          if (maskIndex < riverMask.length && riverMask[maskIndex] > 0.2) { // Much lower threshold
+            // Create a visible river quad
             const riverQuad = MeshBuilder.CreatePlane(`river_${r}_${c}_${x}_${y}`, {
-              width: tilePixelSize * 2,
-              height: tilePixelSize * 2
+              width: quadSize,
+              height: quadSize
             }, scene);
             
             // Position relative to tile
@@ -182,7 +191,7 @@ export function createRiverHighlights(scene: Scene, waterFeatures: WaterFeatures
             const worldX = (c - (cols - 1) * 0.5) * tileSize + (relativeX - 0.5) * tileSize;
             const worldZ = (r - (rows - 1) * 0.5) * tileSize + (relativeY - 0.5) * tileSize;
             
-            riverQuad.position = new Vector3(worldX, options.waterLevel + 2, worldZ);
+            riverQuad.position = new Vector3(worldX, options.waterLevel + 1, worldZ);
             riverQuad.rotation.x = -Math.PI / 2;
             riverQuad.material = riverMaterial;
             

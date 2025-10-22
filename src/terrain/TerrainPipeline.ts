@@ -4,7 +4,7 @@ import { applyFBM } from './filters/FBMNoise';
 import { applySlopeBlur } from './filters/SlopeBlur';
 import { applyRidgeSharpen } from './filters/RidgeSharpen';
 import { applyDunes } from './filters/Dunes';
-import { applyWaterSystem, WaterFeatures } from './filters/WaterSystem';
+import { applyGeologicalErosion, ErosionParams, GeologicalResult } from './filters/GeologicalErosion';
 import type { Biome, BiomeParams } from './Biomes';
 
 export interface PipelineOptions {
@@ -12,16 +12,25 @@ export interface PipelineOptions {
   seed: number;
   baseSize?: number; // 64
   steps?: number;    // 4 -> 512
+  seaLevel?: number; // Sea level in meters
+  erosionYears?: number; // Erosion time in years
 }
 
 export interface TerrainResult {
   heightField: HeightField;
-  waterFeatures?: WaterFeatures;
+  waterFeatures?: any; // Keep for compatibility
+  geologicalResult?: GeologicalResult;
 }
 
 export function generateTerrain(opts: PipelineOptions, biomeParams: BiomeParams): TerrainResult {
   const base = opts.baseSize ?? 64;
   const steps = opts.steps ?? 4;
+  const seaLevel = opts.seaLevel ?? 23; // Default +23m
+  const erosionYears = opts.erosionYears ?? 2500; // Default 2500 years
+  
+  console.log(`Generating base terrain...`);
+  
+  // STEP 1: Generate base terrain (geological formation)
   let h = new HeightField(base);
   for (const size of levelSteps({ baseSize: base, steps })) {
     // resample current field to new level
@@ -33,15 +42,23 @@ export function generateTerrain(opts: PipelineOptions, biomeParams: BiomeParams)
   }
   applyRidgeSharpen(h, biomeParams.ridgeSharpen);
   
-  // Apply water system if configured
-  let waterFeatures: WaterFeatures | undefined;
-  if (biomeParams.water) {
-    waterFeatures = applyWaterSystem(h, biomeParams.water);
-  }
+  console.log(`Base terrain generated, applying ${erosionYears} years of erosion...`);
+  
+  // STEP 2: Apply geological erosion processes
+  const erosionParams: ErosionParams = {
+    timeYears: erosionYears,
+    seaLevel: seaLevel,
+    windStrength: biomeParams.fbm.amplitude * 0.5, // Base wind on terrain roughness
+    rainIntensity: 1.0, // Standard rainfall
+    temperatureCycles: opts.biome === 'alpine' ? 50 : opts.biome === 'desert' ? 10 : 25 // Climate-dependent
+  };
+  
+  const geologicalResult = applyGeologicalErosion(h, erosionParams);
   
   // DON'T normalize here - will be done globally
   return {
     heightField: h,
-    waterFeatures
+    waterFeatures: geologicalResult.waterFeatures, // For compatibility
+    geologicalResult
   };
 }

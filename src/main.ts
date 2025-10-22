@@ -57,7 +57,7 @@ let tileBorderMeshes: any[] = [];
 let waterMeshes: any[] = [];
 let riverMeshes: any[] = [];
 
-function createTileBorders(rows: number, cols: number, tileSize: number) {
+function createTileBorders(rows: number, cols: number, worldTileSize: number) {
   // Clear existing borders
   tileBorderMeshes.forEach(mesh => mesh.dispose());
   tileBorderMeshes = [];
@@ -73,9 +73,9 @@ function createTileBorders(rows: number, cols: number, tileSize: number) {
   
   // Create horizontal borders
   for (let row = 0; row <= rows; row++) {
-    const z = (row - rows/2) * tileSize;
+    const z = (row - rows/2) * worldTileSize;
     const border = MeshBuilder.CreateBox(`hBorder_${row}`, {
-      width: cols * tileSize + borderWidth,
+      width: cols * worldTileSize + borderWidth,
       height: borderHeight,
       depth: borderWidth
     }, scene);
@@ -86,11 +86,11 @@ function createTileBorders(rows: number, cols: number, tileSize: number) {
   
   // Create vertical borders
   for (let col = 0; col <= cols; col++) {
-    const x = (col - cols/2) * tileSize;
+    const x = (col - cols/2) * worldTileSize;
     const border = MeshBuilder.CreateBox(`vBorder_${col}`, {
       width: borderWidth,
       height: borderHeight,
-      depth: rows * tileSize + borderWidth
+      depth: rows * worldTileSize + borderWidth
     }, scene);
     border.position = new Vector3(x, borderHeight/2, 0);
     border.material = borderMaterial;
@@ -126,6 +126,8 @@ interface TerrainConfig {
   octaves: number;
   warp: number;
   heightScale: number;
+  seaLevel: number;
+  erosionYears: number;
 }
 
 function getUIConfig(): TerrainConfig {
@@ -141,6 +143,8 @@ function getUIConfig(): TerrainConfig {
     octaves: parseInt((document.getElementById("octaves") as HTMLInputElement).value),
     warp: parseFloat((document.getElementById("warp") as HTMLInputElement).value),
     heightScale: parseFloat((document.getElementById("height") as HTMLInputElement).value),
+    seaLevel: parseFloat((document.getElementById("sealevel") as HTMLInputElement).value),
+    erosionYears: parseFloat((document.getElementById("erosion") as HTMLInputElement).value),
   };
 }
 
@@ -176,18 +180,26 @@ function getValueLabel(id: string, value: number): string {
     case 'height':
       return `${value}m`;
     
+    case 'sealevel':
+      return value >= 0 ? `+${value}m` : `${value}m`;
+    
+    case 'erosion':
+      return value >= 1000 ? `${(value/1000).toFixed(1)}k years` : `${value} years`;
+    
     default:
       return value.toString();
   }
 }
 
 function updateValueDisplays() {
-  const controls = ['amplitude', 'frequency', 'octaves', 'warp', 'height'];
+  const controls = ['amplitude', 'frequency', 'octaves', 'warp', 'height', 'sealevel', 'erosion'];
   controls.forEach(id => {
     const slider = document.getElementById(id) as HTMLInputElement;
-    const value = parseFloat(slider.value);
-    const label = getValueLabel(id, value);
-    document.getElementById(`${id}-value`)!.textContent = label;
+    if (slider) {
+      const value = parseFloat(slider.value);
+      const label = getValueLabel(id, value);
+      document.getElementById(`${id}-value`)!.textContent = label;
+    }
   });
 }
 
@@ -254,7 +266,9 @@ async function generateTerrain() {
       steps: 4,
       worldScale: 1.0,
       seed: config.seed,
-      blendSeams: false
+      blendSeams: false,
+      seaLevel: config.seaLevel,
+      erosionYears: config.erosionYears
     }, customBiome);
     
     // Step 4: Create atlas
@@ -309,32 +323,23 @@ async function generateTerrain() {
     toggleTileBorders(config.showTiles);
     
     // Step 7: Create water features
-    if (grid.waterFeatures) {
+    const waterFeatures = grid.waterFeatures || grid.geologicalResult?.waterFeatures;
+    if (waterFeatures) {
       progressManager.updateProgress(98, "Creating water and rivers...");
       await progressManager.delay(100);
       
-      const waterLevel = customBiome.water?.seaLevel ? 
-        customBiome.water.seaLevel * customBiome.heightScale : 0;
+      const waterLevel = config.seaLevel; // Use absolute sea level
       
-      const waterPlanes = createWaterPlanes(scene, grid.waterFeatures, {
+      const waterPlanes = createWaterPlanes(scene, waterFeatures, {
         waterLevel,
         tileSize: worldTileSize,
         rows: config.rows,
         cols: config.cols,
         atlasWidth: grid.innerSize * config.cols,
         atlasHeight: grid.innerSize * config.rows
-      });
+      }, currentMeshes); // Pass terrain meshes for reflections
       
-      // Add terrain meshes to water reflection list for realistic reflections
-      waterPlanes.forEach(waterPlane => {
-        if (waterPlane.material && (waterPlane.material as any).addToRenderList) {
-          currentMeshes.forEach(terrainMesh => {
-            (waterPlane.material as any).addToRenderList(terrainMesh);
-          });
-        }
-      });
-      
-      const riverHighlights = createRiverHighlights(scene, grid.waterFeatures, {
+      const riverHighlights = createRiverHighlights(scene, waterFeatures, {
         waterLevel,
         tileSize: worldTileSize,
         rows: config.rows,
@@ -371,9 +376,11 @@ async function generateTerrain() {
 // Set up event listeners
 function setupUI() {
   // Update value displays on slider change
-  ["amplitude", "frequency", "octaves", "warp", "height"].forEach(id => {
+  ["amplitude", "frequency", "octaves", "warp", "height", "sealevel", "erosion"].forEach(id => {
     const slider = document.getElementById(id) as HTMLInputElement;
-    slider.addEventListener("input", updateValueDisplays);
+    if (slider) {
+      slider.addEventListener("input", updateValueDisplays);
+    }
   });
   
   // Tile borders checkbox

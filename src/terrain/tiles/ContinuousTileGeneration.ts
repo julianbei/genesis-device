@@ -10,10 +10,11 @@ import type { WaterFeatures } from "../filters/WaterSystem";
 import type { TileGridConfig, GeneratedGrid } from "./TileStreaming";
 
 export interface ContinuousGrid extends GeneratedGrid {
-  waterFeatures?: WaterFeatures;
+  waterFeatures?: any;
+  geologicalResult?: any;
 }
 
-export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomeParams): ContinuousGrid {
+export function generateContinuousTileGrid(cfg: TileGridConfig & { seaLevel?: number, erosionYears?: number }, biome: BiomeParams): ContinuousGrid {
   const { rows, cols, tileSize: N, overlap: O } = cfg;
   const inner = N - 2 * O;
   
@@ -28,7 +29,9 @@ export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomePara
     baseSize: cfg.baseSize ?? 64,
     steps: Math.ceil(Math.log2(Math.max(totalWidth, totalHeight) / (cfg.baseSize ?? 64))) + 1,
     seed: cfg.seed,
-    biome: 'temperate' as any
+    biome: 'temperate' as any,
+    seaLevel: cfg.seaLevel,
+    erosionYears: cfg.erosionYears
   }, biome);
   
   // Resample to exact size we need
@@ -101,6 +104,7 @@ export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomePara
     atlas,
     atlasSize: Math.max(atlasW, atlasH),
     rects,
-    waterFeatures: terrainResult.waterFeatures
+    waterFeatures: terrainResult.waterFeatures,
+    geologicalResult: terrainResult.geologicalResult
   };
 }
