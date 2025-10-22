@@ -6,9 +6,14 @@
 import { HeightField } from "../HeightField";
 import { generateTerrain } from "../TerrainPipeline";
 import type { BiomeParams } from "../Biomes";
+import type { WaterFeatures } from "../filters/WaterSystem";
 import type { TileGridConfig, GeneratedGrid } from "./TileStreaming";
 
-export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomeParams): GeneratedGrid {
+export interface ContinuousGrid extends GeneratedGrid {
+  waterFeatures?: WaterFeatures;
+}
+
+export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomeParams): ContinuousGrid {
   const { rows, cols, tileSize: N, overlap: O } = cfg;
   const inner = N - 2 * O;
   
@@ -19,7 +24,7 @@ export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomePara
   console.log(`Generating continuous heightfield: ${totalWidth}x${totalHeight}`);
   
   // Generate one large continuous heightfield
-  const largeField = generateTerrain({
+  const terrainResult = generateTerrain({
     baseSize: cfg.baseSize ?? 64,
     steps: Math.ceil(Math.log2(Math.max(totalWidth, totalHeight) / (cfg.baseSize ?? 64))) + 1,
     seed: cfg.seed,
@@ -27,7 +32,7 @@ export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomePara
   }, biome);
   
   // Resample to exact size we need
-  const continuous = largeField.resampleTo(Math.max(totalWidth, totalHeight));
+  const continuous = terrainResult.heightField.resampleTo(Math.max(totalWidth, totalHeight));
   
   // Extract tiles from the continuous field
   const tiles: HeightField[] = [];
@@ -95,6 +100,7 @@ export function generateContinuousTileGrid(cfg: TileGridConfig, biome: BiomePara
     innerSize: inner,
     atlas,
     atlasSize: Math.max(atlasW, atlasH),
-    rects
+    rects,
+    waterFeatures: terrainResult.waterFeatures
   };
 }

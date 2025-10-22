@@ -4,6 +4,7 @@ import { applyFBM } from './filters/FBMNoise';
 import { applySlopeBlur } from './filters/SlopeBlur';
 import { applyRidgeSharpen } from './filters/RidgeSharpen';
 import { applyDunes } from './filters/Dunes';
+import { applyWaterSystem, WaterFeatures } from './filters/WaterSystem';
 import type { Biome, BiomeParams } from './Biomes';
 
 export interface PipelineOptions {
@@ -13,7 +14,12 @@ export interface PipelineOptions {
   steps?: number;    // 4 -> 512
 }
 
-export function generateTerrain(opts: PipelineOptions, biomeParams: BiomeParams): HeightField {
+export interface TerrainResult {
+  heightField: HeightField;
+  waterFeatures?: WaterFeatures;
+}
+
+export function generateTerrain(opts: PipelineOptions, biomeParams: BiomeParams): TerrainResult {
   const base = opts.baseSize ?? 64;
   const steps = opts.steps ?? 4;
   let h = new HeightField(base);
@@ -26,6 +32,16 @@ export function generateTerrain(opts: PipelineOptions, biomeParams: BiomeParams)
     if (biomeParams.dunes && size >= 256) applyDunes(h, biomeParams.dunes);
   }
   applyRidgeSharpen(h, biomeParams.ridgeSharpen);
+  
+  // Apply water system if configured
+  let waterFeatures: WaterFeatures | undefined;
+  if (biomeParams.water) {
+    waterFeatures = applyWaterSystem(h, biomeParams.water);
+  }
+  
   // DON'T normalize here - will be done globally
-  return h;
+  return {
+    heightField: h,
+    waterFeatures
+  };
 }
