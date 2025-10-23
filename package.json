@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@babylonjs/core": "^6.0.0",
-    "@babylonjs/materials": "^6.49.0"
+    "@babylonjs/materials": "^6.49.0",
+    "genesis-terrain-wasm": "file:./pkg"
   }
 }

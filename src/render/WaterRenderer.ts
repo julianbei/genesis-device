@@ -1,6 +1,6 @@
 import { Scene, MeshBuilder, StandardMaterial, Color3, Vector3, Vector2, Texture, DynamicTexture, Mesh } from "@babylonjs/core";
 import { WaterMaterial } from "@babylonjs/materials/water";
-import { WaterFeatures } from "../terrain/filters/WaterSystem";
+import { WaterFeatures } from "../terrain/types";
 
 export interface WaterRenderOptions {
   waterLevel: number;      // Y position for water plane

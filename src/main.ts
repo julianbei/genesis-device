@@ -1,13 +1,13 @@
 // src/main.ts
 import { Engine, Scene, ArcRotateCamera, HemisphericLight, Vector3, RawTexture, Texture, MeshBuilder, StandardMaterial, Color3 } from "@babylonjs/core";
 import "@babylonjs/core/Materials/standardMaterial";
-import { BIOMES, BiomeParams } from "./terrain/Biomes";
-import { generateContinuousTileGrid, ContinuousGrid } from "./terrain/tiles/ContinuousTileGeneration";
+import { BIOMES, BiomeParams, ContinuousGrid } from "./terrain/types";
+import { WasmTerrainGenerator } from "./terrain/WasmTerrainGenerator";
 import { createAtlasMaterial } from "./render/AtlasTriplanarPBR";
 import { createTileGeometry, setTileRect } from "./render/TerrainTileMeshes";
 import { createWaterPlanes, createRiverHighlights } from "./render/WaterRenderer";
 
-const canvas = document.getElementById("app") as HTMLCanvasElement;
+const canvas = document.getElementById("app") as unknown as HTMLCanvasElement;
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
 
@@ -216,6 +216,8 @@ async function generateTerrain() {
   generateBtn.disabled = true;
   generateBtn.textContent = "⏳ Generating...";
   
+  console.log("🚀 Starting WASM terrain generation...");
+  
   try {
     // Step 1: Cleanup
     progressManager.updateProgress(10, "Cleaning up previous terrain...");
@@ -257,19 +259,22 @@ async function generateTerrain() {
     const tileSize = 512;
     const overlap = 32;
     
-    const grid: ContinuousGrid = generateContinuousTileGrid({
+    const terrainStart = performance.now();
+    const grid: ContinuousGrid = await WasmTerrainGenerator.generateContinuousTileGrid({
       rows: config.rows, 
       cols: config.cols,
       tileSize,
       overlap,
       baseSize: 64,
-      steps: 4,
-      worldScale: 1.0,
       seed: config.seed,
-      blendSeams: false,
       seaLevel: config.seaLevel,
       erosionYears: config.erosionYears
-    }, customBiome);
+    }, customBiome, config.biome);
+    
+    const terrainTime = performance.now() - terrainStart;
+    console.log(`🌍 Total terrain generation: ${terrainTime.toFixed(2)}ms`);
+    console.log("🌊 Grid water features:", grid.waterFeatures);
+    console.log("🎯 Erosion years:", config.erosionYears, "Sea level:", config.seaLevel);
     
     // Step 4: Create atlas
     progressManager.updateProgress(60, "Building texture atlas...");
@@ -323,7 +328,8 @@ async function generateTerrain() {
     toggleTileBorders(config.showTiles);
     
     // Step 7: Create water features
-    const waterFeatures = grid.waterFeatures || grid.geologicalResult?.waterFeatures;
+    const waterFeatures = grid.waterFeatures;
+    console.log("🌊 Water features for rendering:", waterFeatures);
     if (waterFeatures) {
       progressManager.updateProgress(98, "Creating water and rivers...");
       await progressManager.delay(100);
